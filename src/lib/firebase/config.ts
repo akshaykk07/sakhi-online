@@ -3,7 +3,10 @@ export interface FirebaseConfigStatus {
   missingKeys: string[];
   usingEmulator: boolean;
   projectId: string;
+  databaseId: string;
 }
+
+export const firebaseDatabaseId = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID || "default";
 
 export const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCu6dLGDsAB6ETVaf0GxaYkJnN48rybiHE",
@@ -30,6 +33,7 @@ export function getFirebaseConfigStatus(): FirebaseConfigStatus {
     missingKeys,
     usingEmulator,
     projectId: firebaseConfig.projectId || (usingEmulator ? "demo-eshop-admin" : "not-configured"),
+    databaseId: firebaseDatabaseId,
   };
 }
 

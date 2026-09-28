@@ -69,7 +69,11 @@ export function getFirebaseAdminApp(): App {
 
 export function getAdminDb(): Firestore {
   const app = getFirebaseAdminApp();
-  return getFirestore(app);
+  const databaseId =
+    process.env.FIREBASE_DATABASE_ID ||
+    process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID ||
+    "default";
+  return getFirestore(app, databaseId);
 }
 
 export function getAdminAuth(): Auth {

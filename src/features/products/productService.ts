@@ -16,6 +16,7 @@ import {
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { firestoreDb, firebaseStorage } from "@/lib/firebase/client";
 import { Product, ProductFilterOptions, ProductStatus } from "@/types";
+import { removeUndefinedFields } from "@/lib/utils/cleanData";
 
 const COLLECTION_NAME = "products";
 
@@ -134,39 +135,45 @@ export const productService = {
       updatedAt: nowIso,
     };
 
-    await setDoc(docRef, newProduct);
+    await setDoc(docRef, removeUndefinedFields(newProduct));
 
     // Initial stock in ledger if stock > 0
     if (newProduct.stockQuantity > 0) {
       const invRef = doc(collection(firestoreDb, "inventoryTransactions"));
-      await setDoc(invRef, {
-        id: invRef.id,
-        productId: newProduct.id,
-        productName: newProduct.name,
-        type: "stock_in",
-        quantity: newProduct.stockQuantity,
-        previousStock: 0,
-        newStock: newProduct.stockQuantity,
-        reason: "Initial inventory setup",
-        referenceId: newProduct.id,
-        performedBy: adminId,
-        performedByName: adminName,
-        createdAt: nowIso,
-      });
+      await setDoc(
+        invRef,
+        removeUndefinedFields({
+          id: invRef.id,
+          productId: newProduct.id,
+          productName: newProduct.name,
+          type: "stock_in",
+          quantity: newProduct.stockQuantity,
+          previousStock: 0,
+          newStock: newProduct.stockQuantity,
+          reason: "Initial inventory setup",
+          referenceId: newProduct.id,
+          performedBy: adminId,
+          performedByName: adminName,
+          createdAt: nowIso,
+        })
+      );
     }
 
     // Audit log
     const auditRef = doc(collection(firestoreDb, "auditLogs"));
-    await setDoc(auditRef, {
-      id: auditRef.id,
-      adminId,
-      adminName,
-      action: "PRODUCT_CREATED",
-      collection: COLLECTION_NAME,
-      documentId: newProduct.id,
-      newValue: { name: newProduct.name, sku: newProduct.sku, price: newProduct.sellingPrice },
-      timestamp: nowIso,
-    });
+    await setDoc(
+      auditRef,
+      removeUndefinedFields({
+        id: auditRef.id,
+        adminId,
+        adminName,
+        action: "PRODUCT_CREATED",
+        collection: COLLECTION_NAME,
+        documentId: newProduct.id,
+        newValue: { name: newProduct.name, sku: newProduct.sku, price: newProduct.sellingPrice },
+        timestamp: nowIso,
+      })
+    );
 
     return newProduct;
   },
@@ -186,10 +193,13 @@ export const productService = {
     const prevData = existing.data();
     const nowIso = new Date().toISOString();
 
-    await updateDoc(docRef, {
-      ...updates,
-      updatedAt: nowIso,
-    });
+    await updateDoc(
+      docRef,
+      removeUndefinedFields({
+        ...updates,
+        updatedAt: nowIso,
+      })
+    );
 
     // Audit log
     const auditRef = doc(collection(firestoreDb, "auditLogs"));
@@ -201,7 +211,7 @@ export const productService = {
       collection: COLLECTION_NAME,
       documentId: id,
       previousValue: prevData,
-      newValue: updates,
+      newValue: removeUndefinedFields(updates),
       timestamp: nowIso,
     });
   },

@@ -2,7 +2,7 @@ import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, Auth } from "firebase/auth";
 import { initializeFirestore, getFirestore, connectFirestoreEmulator, Firestore } from "firebase/firestore";
 import { getStorage, connectStorageEmulator, FirebaseStorage } from "firebase/storage";
-import { firebaseConfig, getFirebaseConfigStatus } from "./config";
+import { firebaseConfig, firebaseDatabaseId, getFirebaseConfigStatus } from "./config";
 
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
@@ -41,12 +41,17 @@ export function initializeFirebase() {
   if (app) {
     if (!auth) auth = getAuth(app);
     if (!db) {
+      const dbId = firebaseDatabaseId;
       try {
-        db = initializeFirestore(app, {
-          experimentalAutoDetectLongPolling: true,
-        });
+        db = initializeFirestore(
+          app,
+          {
+            experimentalAutoDetectLongPolling: true,
+          },
+          dbId
+        );
       } catch {
-        db = getFirestore(app);
+        db = getFirestore(app, dbId);
       }
     }
     if (!storage) storage = getStorage(app);
