@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role in ['super_admin', 'admin', 'manager', 'sales_manager', 'inventory_manager'] ||
+        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*')
+        && request.resource.size < 5 * 1024 * 1024; // Max 5MB
+    }
+
+    // Product Images
+    match /products/{productId}/{allImages=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidImage();
+      allow delete: if isAdmin();
+    }
+
+    // Category Images
+    match /categories/{categoryId}/{allImages=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidImage();
+      allow delete: if isAdmin();
+    }
+
+    // Business Assets (Logo, Branding)
+    match /business/{allImages=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidImage();
+      allow delete: if isAdmin();
+    }
+
+    // User Avatars
+    match /users/{userId}/{allImages=**} {
+      allow read: if true;
+      allow write: if (isAuthenticated() && request.auth.uid == userId && isValidImage()) || isAdmin();
+      allow delete: if (isAuthenticated() && request.auth.uid == userId) || isAdmin();
+    }
+  }
+}

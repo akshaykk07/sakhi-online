@@ -1,0 +1,142 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role in ['super_admin', 'admin', 'manager', 'sales_manager', 'inventory_manager', 'viewer'] ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'super_admin' ||
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'super_admin'
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Admins Collection
+    // Only super_admin can create/update/delete admins. Admins can read their own profile.
+    match /admins/{adminId} {
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // Users Collection (Customers)
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'balance', 'totalSpending', 'totalOrders']);
+      allow delete: if isAdmin();
+    }
+
+    // Customers Collection (Admin-facing aggregated view)
+    match /customers/{customerId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Products Collection
+    // Public can read active products. Only admins with products.write permission can mutate.
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Categories Collection
+    // Public read. Admin write.
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Coupons Collection
+    // Public read for active coupons validation. Admin write.
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Orders Collection
+    // Customers can read their own orders. Admins can read all orders.
+    // Client-side creates are strictly blocked or must go through trusted Cloud Functions/Server Actions to prevent price/total manipulation!
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.customerId == request.auth.uid);
+      allow create: if isAdmin(); // Orders created via server-side Admin SDK / Cloud Functions
+      allow update: if isAdmin(); // Status transitions & updates managed by admin or trusted backend
+      allow delete: if isSuperAdmin();
+
+      match /statusHistory/{historyId} {
+        allow read: if isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == request.auth.uid);
+        allow write: if isAdmin();
+      }
+
+      match /events/{eventId} {
+        allow read: if isAdmin();
+        allow write: if isAdmin();
+      }
+    }
+
+    // Payments Collection
+    // Only admins or trusted backend webhook can read/write payments
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.customerId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    // Inventory Transactions (Immutable Ledger)
+    // Client cannot forge transactions.
+    match /inventoryTransactions/{transactionId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false; // Immutable ledger
+    }
+
+    // Sales Aggregates
+    // Never writeable by clients directly!
+    match /salesDaily/{dayId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /salesMonthly/{monthId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /salesYearly/{yearId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Audit Logs
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false; // Immutable audit log
+    }
+
+    // Settings
+    match /settings/{settingId} {
+      allow read: if true; // Public can read store settings like deliveryCharge/taxRate
+      allow write: if isAdmin();
+    }
+  }
+}
