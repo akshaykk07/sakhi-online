@@ -90,4 +90,7 @@ export interface CreateOrderPayload {
   couponCode?: string;
   paymentMethod: PaymentMethod;
   deliveryChargeOverride?: number;
+  paymentStatus?: PaymentStatus;
+  orderStatus?: OrderStatus;
+  notes?: string;
 }

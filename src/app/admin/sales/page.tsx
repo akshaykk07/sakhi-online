@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { salesService } from "@/features/sales/salesService";
 import { orderService } from "@/features/orders/orderService";
 import { reportService } from "@/features/reports/reportService";
@@ -9,7 +10,9 @@ import { formatCurrency, formatDate } from "@/lib/utils/cn";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
+import { OrderStatusBadge, PaymentStatusBadge } from "@/components/ui/Badge";
 import { DailySalesChart, CategorySalesChart } from "@/components/charts/DashboardCharts";
+import { AddSaleModal } from "@/features/sales/components/AddSaleModal";
 import {
   TrendingUp,
   Download,
@@ -21,6 +24,11 @@ import {
   ShoppingBag,
   Calendar,
   Filter,
+  Plus,
+  RefreshCw,
+  Receipt,
+  Eye,
+  ExternalLink,
 } from "lucide-react";
 
 export default function SalesPage() {
@@ -30,6 +38,7 @@ export default function SalesPage() {
   const [categorySales, setCategorySales] = useState<{ name: string; value: number }[]>([]);
   const [productSales, setProductSales] = useState<{ name: string; units: number; revenue: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddSaleOpen, setIsAddSaleOpen] = useState(false);
 
   useEffect(() => {
     loadSalesData();
@@ -191,6 +200,20 @@ export default function SalesPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => setIsAddSaleOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add Sale
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={loadSalesData} disabled={loading}>
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <FileText className="mr-1.5 h-3.5 w-3.5" />
             CSV
@@ -338,6 +361,109 @@ export default function SalesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Sales Transactions & Orders Ledger */}
+      <Card>
+        <CardHeader className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+          <div>
+            <CardTitle className="text-base">Sales Transactions & Orders</CardTitle>
+            <p className="text-xs text-slate-500">
+              Individual order receipts, line items, and payment settlements for {filterPeriod.replace("_", " ")}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setIsAddSaleOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs"
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Record Direct Sale
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {filteredOrders.length === 0 ? (
+            <p className="text-xs text-slate-400 py-8 text-center">No sales orders found for this period.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 uppercase font-semibold">
+                    <th className="py-2.5 px-3">Order #</th>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Customer</th>
+                    <th className="py-2.5 px-3 text-center">Payment</th>
+                    <th className="py-2.5 px-3 text-center">Order Status</th>
+                    <th className="py-2.5 px-3 text-right">Gross</th>
+                    <th className="py-2.5 px-3 text-right">Net Amount</th>
+                    <th className="py-2.5 px-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredOrders.slice(0, 20).map((o) => (
+                    <tr key={o.id} className="hover:bg-slate-50/50">
+                      <td className="py-3 px-3 font-semibold font-mono text-indigo-600">
+                        {o.orderNumber}
+                      </td>
+                      <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
+                        {formatDate(o.createdAt)}
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="font-semibold text-slate-900">{o.customerSnapshot?.name || "Customer"}</div>
+                        <div className="text-[10px] text-slate-400">{o.customerSnapshot?.phone || o.customerSnapshot?.email}</div>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase text-slate-600 block">
+                            {o.paymentMethod}
+                          </span>
+                          <PaymentStatusBadge status={o.paymentStatus} />
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <OrderStatusBadge status={o.orderStatus} />
+                      </td>
+                      <td className="py-3 px-3 text-right text-slate-600">
+                        {formatCurrency(o.subtotal)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-extrabold text-slate-900">
+                        {formatCurrency(o.total)}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Link href={`/invoice/${o.id}`} target="_blank" title="View & Print Invoice">
+                            <Button variant="outline" size="sm" className="h-7 px-2 text-[11px] gap-1">
+                              <Receipt className="h-3 w-3 text-indigo-600" />
+                              Invoice
+                            </Button>
+                          </Link>
+                          <Link href={`/admin/orders/${o.id}`} title="View Order Details">
+                            <Button variant="outline" size="sm" className="h-7 px-2 text-[11px] gap-1">
+                              <Eye className="h-3 w-3" />
+                              View
+                            </Button>
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {filteredOrders.length > 20 && (
+                <div className="pt-3 text-center text-xs text-slate-400">
+                  Showing 20 of {filteredOrders.length} orders. Use Order Management to view all records.
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add Sale Modal */}
+      <AddSaleModal
+        isOpen={isAddSaleOpen}
+        onClose={() => setIsAddSaleOpen(false)}
+        onSaleCreated={loadSalesData}
+      />
     </div>
   );
 }

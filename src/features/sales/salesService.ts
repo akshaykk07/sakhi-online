@@ -7,7 +7,8 @@ import {
   limit,
 } from "firebase/firestore";
 import { firestoreDb } from "@/lib/firebase/client";
-import { SalesAggregate, DashboardMetrics, Order, Product } from "@/types";
+import { SalesAggregate, DashboardMetrics, Order, Product, CreateOrderPayload } from "@/types";
+import { orderService } from "@/features/orders/orderService";
 
 export const salesService = {
   async getDailySales(days: number = 30): Promise<SalesAggregate[]> {
@@ -284,5 +285,12 @@ export const salesService = {
     } catch {
       return [];
     }
+  },
+
+  /**
+   * Records a direct sale executing the complete transactional sales flow
+   */
+  async recordSale(payload: CreateOrderPayload) {
+    return orderService.createCustomerOrder(payload);
   },
 };

@@ -6,10 +6,13 @@ import {
   updateDoc,
   deleteDoc,
   query,
+  where,
+  limit,
   orderBy,
 } from "firebase/firestore";
 import { firestoreDb } from "@/lib/firebase/client";
 import { Coupon, CouponValidationResult } from "@/types";
+import { validateAndCalculateCoupon } from "@/lib/business-rules";
 
 const COLLECTION_NAME = "coupons";
 
@@ -118,11 +121,41 @@ export const couponService = {
   },
 
   async validateCoupon(code: string, subtotal: number, customerId?: string): Promise<CouponValidationResult> {
-    const res = await fetch("/api/coupons/validate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, subtotal, customerId }),
-    });
-    return await res.json();
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, subtotal, customerId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return data;
+      }
+    } catch {
+      // Fall through to client-side validation
+    }
+
+    if (!firestoreDb) {
+      return { valid: false, discountAmount: 0, message: "Firestore is offline" };
+    }
+
+    try {
+      const cleanCode = code.toUpperCase().trim();
+      const q = query(
+        collection(firestoreDb, COLLECTION_NAME),
+        where("code", "==", cleanCode),
+        where("active", "==", true),
+        limit(1)
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        return { valid: false, discountAmount: 0, message: "Invalid or inactive coupon code." };
+      }
+      const couponDoc = snap.docs[0];
+      const coupon = { id: couponDoc.id, ...couponDoc.data() } as Coupon;
+      return validateAndCalculateCoupon(coupon, Number(subtotal || 0), 0);
+    } catch {
+      return { valid: false, discountAmount: 0, message: "Failed to validate coupon." };
+    }
   },
 };

@@ -101,6 +101,11 @@ export async function POST(req: NextRequest) {
       // 4. Calculate Financials using centralized business rules
       const financials = calculateOrderFinancials(verifiedItems, couponData, 0, settings);
 
+      if (body.deliveryChargeOverride !== undefined && body.deliveryChargeOverride !== null) {
+        financials.deliveryCharge = Math.max(0, Number(body.deliveryChargeOverride));
+        financials.total = Number((financials.taxableAmount + financials.tax + financials.deliveryCharge).toFixed(2));
+      }
+
       // Populate item taxes and subtotals
       const orderItems = verifiedItems.map((item) => {
         const itemSubtotal = Number((item.unitPrice * item.quantity).toFixed(2));
@@ -166,8 +171,8 @@ export async function POST(req: NextRequest) {
       }
 
       // 7. Create Order Document
-      const initialPaymentStatus = paymentMethod === "cod" ? "pending" : "paid";
-      const initialOrderStatus = paymentMethod === "cod" ? "pending" : "confirmed";
+      const initialPaymentStatus = body.paymentStatus || (paymentMethod === "cod" ? "pending" : "paid");
+      const initialOrderStatus = body.orderStatus || (paymentMethod === "cod" ? "pending" : "confirmed");
 
       const orderData = {
         id: orderId,
@@ -200,7 +205,7 @@ export async function POST(req: NextRequest) {
         changedBy: customerId,
         changedByName: customerSnapshot.name,
         timestamp: nowIso,
-        note: `Order placed online via ${paymentMethod.toUpperCase()}`,
+        note: body.notes || (paymentMethod === "cod" ? "Order placed (Cash on Delivery)" : `Order placed via ${paymentMethod.toUpperCase()}`),
       });
 
       // 8. Create Payment Record
