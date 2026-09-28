@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb, Transaction } from "@/lib/firebase/admin";
 import { InventoryTransactionType } from "@/types";
 
 export async function POST(req: NextRequest) {
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const db = getAdminDb();
     const nowIso = new Date().toISOString();
 
-    const result = await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction: Transaction) => {
       const prodRef = db.collection("products").doc(productId);
       const prodSnap = await transaction.get(prodRef);
 

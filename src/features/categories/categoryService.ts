@@ -19,17 +19,27 @@ const COLLECTION_NAME = "categories";
 export const categoryService = {
   async getCategories(): Promise<Category[]> {
     if (!firestoreDb) return [];
-    const colRef = collection(firestoreDb, COLLECTION_NAME);
-    const snap = await getDocs(colRef);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Category));
+    try {
+      const colRef = collection(firestoreDb, COLLECTION_NAME);
+      const snap = await getDocs(colRef);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Category));
+    } catch (e) {
+      console.warn("Could not fetch categories (client offline or database not created):", e);
+      return [];
+    }
   },
 
   async getCategory(id: string): Promise<Category | null> {
     if (!firestoreDb) return null;
-    const docRef = doc(firestoreDb, COLLECTION_NAME, id);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() } as Category;
+    try {
+      const docRef = doc(firestoreDb, COLLECTION_NAME, id);
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() } as Category;
+    } catch (e) {
+      console.warn(`Could not fetch category ${id}:`, e);
+      return null;
+    }
   },
 
   async createCategory(

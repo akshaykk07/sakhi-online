@@ -22,10 +22,15 @@ export const notificationService = {
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification));
     } catch {
-      const snap = await getDocs(collection(firestoreDb, COLLECTION_NAME));
-      return snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as Notification))
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      try {
+        const snap = await getDocs(collection(firestoreDb, COLLECTION_NAME));
+        return snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as Notification))
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } catch (err) {
+        console.warn("Could not fetch notifications (client offline or database not created):", err);
+        return [];
+      }
     }
   },
 

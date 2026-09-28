@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, Auth } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator, Firestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore, connectFirestoreEmulator, Firestore } from "firebase/firestore";
 import { getStorage, connectStorageEmulator, FirebaseStorage } from "firebase/storage";
 import { firebaseConfig, getFirebaseConfigStatus } from "./config";
 
@@ -22,13 +22,13 @@ export function initializeFirebase() {
       app = initializeApp(
         status.usingEmulator
           ? {
-              apiKey: "demo-key",
-              authDomain: "demo-eshop-admin.firebaseapp.com",
-              projectId: "demo-eshop-admin",
-              storageBucket: "demo-eshop-admin.appspot.com",
-              messagingSenderId: "123456789",
-              appId: "1:123456789:web:abcdef",
-            }
+            apiKey: "AIzaSyCu6dLGDsAB6ETVaf0GxaYkJnN48rybiHE",
+            authDomain: "sakhi-online.firebaseapp.com",
+            projectId: "sakhi-online",
+            storageBucket: "sakhi-online.firebasestorage.app",
+            messagingSenderId: "369685598722",
+            appId: "1:369685598722:web:18be2bb15de89e64880d1b",
+          }
           : firebaseConfig
       );
     } catch (e) {
@@ -40,7 +40,15 @@ export function initializeFirebase() {
 
   if (app) {
     if (!auth) auth = getAuth(app);
-    if (!db) db = getFirestore(app);
+    if (!db) {
+      try {
+        db = initializeFirestore(app, {
+          experimentalAutoDetectLongPolling: true,
+        });
+      } catch {
+        db = getFirestore(app);
+      }
+    }
     if (!storage) storage = getStorage(app);
 
     // If emulator mode requested and in development, connect emulators once

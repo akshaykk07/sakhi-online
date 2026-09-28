@@ -32,27 +32,37 @@ export const customerService = {
 
       return list;
     } catch {
-      const snap = await getDocs(collection(firestoreDb, COLLECTION_NAME));
-      let list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Customer));
-      if (search && search.trim()) {
-        const term = search.toLowerCase().trim();
-        list = list.filter(
-          (c) =>
-            c.name?.toLowerCase().includes(term) ||
-            c.email?.toLowerCase().includes(term) ||
-            c.phone?.includes(term)
-        );
+      try {
+        const snap = await getDocs(collection(firestoreDb, COLLECTION_NAME));
+        let list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Customer));
+        if (search && search.trim()) {
+          const term = search.toLowerCase().trim();
+          list = list.filter(
+            (c) =>
+              c.name?.toLowerCase().includes(term) ||
+              c.email?.toLowerCase().includes(term) ||
+              c.phone?.includes(term)
+          );
+        }
+        return list;
+      } catch (err) {
+        console.warn("Could not fetch customers (client offline or database not created):", err);
+        return [];
       }
-      return list;
     }
   },
 
   async getCustomer(id: string): Promise<Customer | null> {
     if (!firestoreDb) return null;
-    const docRef = doc(firestoreDb, COLLECTION_NAME, id);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() } as Customer;
+    try {
+      const docRef = doc(firestoreDb, COLLECTION_NAME, id);
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() } as Customer;
+    } catch (e) {
+      console.warn(`Could not fetch customer ${id}:`, e);
+      return null;
+    }
   },
 
   async getCustomerOrders(customerId: string): Promise<Order[]> {

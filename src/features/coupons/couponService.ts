@@ -20,8 +20,13 @@ export const couponService = {
       const snap = await getDocs(query(collection(firestoreDb, COLLECTION_NAME), orderBy("createdAt", "desc")));
       return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Coupon));
     } catch {
-      const snap = await getDocs(collection(firestoreDb, COLLECTION_NAME));
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Coupon));
+      try {
+        const snap = await getDocs(collection(firestoreDb, COLLECTION_NAME));
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Coupon));
+      } catch (err) {
+        console.warn("Could not fetch coupons (client offline or database not created):", err);
+        return [];
+      }
     }
   },
 

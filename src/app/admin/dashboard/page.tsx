@@ -31,6 +31,7 @@ import {
   Percent,
   RotateCcw,
   Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
 export default function AdminDashboardPage() {

@@ -22,10 +22,15 @@ const COLLECTION_NAME = "products";
 export const productService = {
   async getProduct(id: string): Promise<Product | null> {
     if (!firestoreDb) return null;
-    const docRef = doc(firestoreDb, COLLECTION_NAME, id);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() } as Product;
+    try {
+      const docRef = doc(firestoreDb, COLLECTION_NAME, id);
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() } as Product;
+    } catch (e) {
+      console.warn(`Failed to fetch product ${id}:`, e);
+      return null;
+    }
   },
 
   async getProducts(options: ProductFilterOptions = {}): Promise<{
@@ -86,9 +91,14 @@ export const productService = {
       };
     } catch (e) {
       console.warn("Falling back to un-ordered query:", e);
-      const fallbackSnap = await getDocs(colRef);
-      let list = fallbackSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
-      return { products: list };
+      try {
+        const fallbackSnap = await getDocs(colRef);
+        let list = fallbackSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
+        return { products: list };
+      } catch (err) {
+        console.warn("Could not fetch products (client offline or database not created):", err);
+        return { products: [] };
+      }
     }
   },
 

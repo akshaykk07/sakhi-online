@@ -115,8 +115,9 @@ export default function InventoryPage() {
     }
   };
 
-  const totalPages = Math.ceil(transactions.length / pageSize) || 1;
-  const paginatedTransactions = transactions.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const filteredTransactions = transactions;
+  const totalPages = Math.ceil(filteredTransactions.length / pageSize) || 1;
+  const paginatedTransactions = filteredTransactions.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const getTransactionBadge = (type: InventoryTransactionType) => {
     switch (type) {

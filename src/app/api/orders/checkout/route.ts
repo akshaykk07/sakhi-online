@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb, Transaction } from "@/lib/firebase/admin";
 import { calculateOrderFinancials, validateAndCalculateCoupon } from "@/lib/business-rules";
 import { CreateOrderPayload, DEFAULT_BUSINESS_SETTINGS } from "@/types";
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const nowIso = new Date().toISOString();
 
     // Execute within a Firestore transaction for atomic safety
-    const result = await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction: Transaction) => {
       // 1. Fetch Business Settings
       const settingsRef = db.collection("settings").doc("business");
       const settingsSnap = await transaction.get(settingsRef);

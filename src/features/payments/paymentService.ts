@@ -18,10 +18,15 @@ export const paymentService = {
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PaymentRecord));
     } catch {
-      const snap = await getDocs(collection(firestoreDb, COLLECTION_NAME));
-      return snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as PaymentRecord))
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      try {
+        const snap = await getDocs(collection(firestoreDb, COLLECTION_NAME));
+        return snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as PaymentRecord))
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } catch (err) {
+        console.warn("Could not fetch payments (client offline or database not created):", err);
+        return [];
+      }
     }
   },
 

@@ -58,18 +58,28 @@ export const orderService = {
       return list;
     } catch (e) {
       console.warn("Falling back to unordered orders query:", e);
-      const fallbackSnap = await getDocs(colRef);
-      let list = fallbackSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Order));
-      return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      try {
+        const fallbackSnap = await getDocs(colRef);
+        let list = fallbackSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Order));
+        return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } catch (err) {
+        console.warn("Could not fetch orders (client offline or database not created):", err);
+        return [];
+      }
     }
   },
 
   async getOrder(id: string): Promise<Order | null> {
     if (!firestoreDb) return null;
-    const docRef = doc(firestoreDb, COLLECTION_NAME, id);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() } as Order;
+    try {
+      const docRef = doc(firestoreDb, COLLECTION_NAME, id);
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() } as Order;
+    } catch (e) {
+      console.warn(`Could not fetch order ${id}:`, e);
+      return null;
+    }
   },
 
   async getOrderStatusHistory(orderId: string): Promise<OrderStatusHistory[]> {
@@ -79,11 +89,15 @@ export const orderService = {
       const snap = await getDocs(query(colRef, orderBy("timestamp", "asc")));
       return snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderStatusHistory));
     } catch {
-      const colRef = collection(firestoreDb, COLLECTION_NAME, orderId, "statusHistory");
-      const snap = await getDocs(colRef);
-      return snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as OrderStatusHistory))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      try {
+        const colRef = collection(firestoreDb, COLLECTION_NAME, orderId, "statusHistory");
+        const snap = await getDocs(colRef);
+        return snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as OrderStatusHistory))
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      } catch {
+        return [];
+      }
     }
   },
 

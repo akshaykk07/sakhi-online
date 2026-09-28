@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb, Transaction } from "@/lib/firebase/admin";
 import { canTransitionOrderStatus, getInventoryStatusImpact } from "@/lib/business-rules";
 import { OrderStatus } from "@/types";
 
@@ -19,7 +19,7 @@ export async function POST(
     const db = getAdminDb();
     const nowIso = new Date().toISOString();
 
-    const result = await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction: Transaction) => {
       const orderRef = db.collection("orders").doc(orderId);
       const orderSnap = await transaction.get(orderRef);
 

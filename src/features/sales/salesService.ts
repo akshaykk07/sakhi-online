@@ -19,10 +19,14 @@ export const salesService = {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SalesAggregate));
       return list.sort((a, b) => a.periodKey.localeCompare(b.periodKey));
     } catch {
-      const snap = await getDocs(collection(firestoreDb, "salesDaily"));
-      return snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as SalesAggregate))
-        .sort((a, b) => a.periodKey.localeCompare(b.periodKey));
+      try {
+        const snap = await getDocs(collection(firestoreDb, "salesDaily"));
+        return snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as SalesAggregate))
+          .sort((a, b) => a.periodKey.localeCompare(b.periodKey));
+      } catch {
+        return [];
+      }
     }
   },
 
@@ -35,54 +39,69 @@ export const salesService = {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SalesAggregate));
       return list.sort((a, b) => a.periodKey.localeCompare(b.periodKey));
     } catch {
-      const snap = await getDocs(collection(firestoreDb, "salesMonthly"));
-      return snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as SalesAggregate))
-        .sort((a, b) => a.periodKey.localeCompare(b.periodKey));
+      try {
+        const snap = await getDocs(collection(firestoreDb, "salesMonthly"));
+        return snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as SalesAggregate))
+          .sort((a, b) => a.periodKey.localeCompare(b.periodKey));
+      } catch {
+        return [];
+      }
     }
   },
 
   async getDashboardMetrics(): Promise<DashboardMetrics> {
+    const emptyMetrics: DashboardMetrics = {
+      totalSales: 0,
+      todaySales: 0,
+      thisWeekSales: 0,
+      thisMonthSales: 0,
+      totalOrders: 0,
+      pendingOrders: 0,
+      confirmedOrders: 0,
+      processingOrders: 0,
+      shippedOrders: 0,
+      deliveredOrders: 0,
+      cancelledOrders: 0,
+      returnedOrders: 0,
+      refundedOrders: 0,
+      totalProducts: 0,
+      lowStockProducts: 0,
+      outOfStockProducts: 0,
+      totalCustomers: 0,
+      revenue: 0,
+      grossSales: 0,
+      discounts: 0,
+      refunds: 0,
+      netSales: 0,
+      costOfGoodsSold: 0,
+      profit: 0,
+      averageOrderValue: 0,
+    };
+
     if (!firestoreDb) {
-      return {
-        totalSales: 0,
-        todaySales: 0,
-        thisWeekSales: 0,
-        thisMonthSales: 0,
-        totalOrders: 0,
-        pendingOrders: 0,
-        confirmedOrders: 0,
-        processingOrders: 0,
-        shippedOrders: 0,
-        deliveredOrders: 0,
-        cancelledOrders: 0,
-        returnedOrders: 0,
-        refundedOrders: 0,
-        totalProducts: 0,
-        lowStockProducts: 0,
-        outOfStockProducts: 0,
-        totalCustomers: 0,
-        revenue: 0,
-        grossSales: 0,
-        discounts: 0,
-        refunds: 0,
-        netSales: 0,
-        costOfGoodsSold: 0,
-        profit: 0,
-        averageOrderValue: 0,
-      };
+      return emptyMetrics;
     }
 
-    // Fetch live orders, products, and customers
-    const [ordersSnap, prodsSnap, custsSnap] = await Promise.all([
-      getDocs(collection(firestoreDb, "orders")),
-      getDocs(collection(firestoreDb, "products")),
-      getDocs(collection(firestoreDb, "customers")),
-    ]);
+    let orders: Order[] = [];
+    let products: Product[] = [];
+    let customersCount = 0;
 
-    const orders = ordersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Order));
-    const products = prodsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
-    const customersCount = custsSnap.size;
+    try {
+      // Fetch live orders, products, and customers
+      const [ordersSnap, prodsSnap, custsSnap] = await Promise.all([
+        getDocs(collection(firestoreDb, "orders")),
+        getDocs(collection(firestoreDb, "products")),
+        getDocs(collection(firestoreDb, "customers")),
+      ]);
+
+      orders = ordersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Order));
+      products = prodsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
+      customersCount = custsSnap.size;
+    } catch (e) {
+      console.warn("Could not fetch metrics from Firestore (client offline or database not created):", e);
+      return emptyMetrics;
+    }
 
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
@@ -207,55 +226,63 @@ export const salesService = {
 
   async getSalesByProduct(): Promise<{ name: string; units: number; revenue: number }[]> {
     if (!firestoreDb) return [];
-    const ordersSnap = await getDocs(collection(firestoreDb, "orders"));
-    const map = new Map<string, { name: string; units: number; revenue: number }>();
+    try {
+      const ordersSnap = await getDocs(collection(firestoreDb, "orders"));
+      const map = new Map<string, { name: string; units: number; revenue: number }>();
 
-    ordersSnap.docs.forEach((doc) => {
-      const order = doc.data() as Order;
-      if (order.orderStatus !== "cancelled" && order.items) {
-        order.items.forEach((item) => {
-          const key = item.productId || item.name;
-          const curr = map.get(key) || { name: item.name, units: 0, revenue: 0 };
-          curr.units += item.quantity || 1;
-          curr.revenue += item.subtotal || item.unitPrice * (item.quantity || 1);
-          map.set(key, curr);
-        });
-      }
-    });
+      ordersSnap.docs.forEach((doc) => {
+        const order = doc.data() as Order;
+        if (order.orderStatus !== "cancelled" && order.items) {
+          order.items.forEach((item) => {
+            const key = item.productId || item.name;
+            const curr = map.get(key) || { name: item.name, units: 0, revenue: 0 };
+            curr.units += item.quantity || 1;
+            curr.revenue += item.subtotal || item.unitPrice * (item.quantity || 1);
+            map.set(key, curr);
+          });
+        }
+      });
 
-    return Array.from(map.values())
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 10);
+      return Array.from(map.values())
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10);
+    } catch {
+      return [];
+    }
   },
 
   async getSalesByCategory(): Promise<{ name: string; value: number }[]> {
     if (!firestoreDb) return [];
-    const [ordersSnap, prodsSnap] = await Promise.all([
-      getDocs(collection(firestoreDb, "orders")),
-      getDocs(collection(firestoreDb, "products")),
-    ]);
+    try {
+      const [ordersSnap, prodsSnap] = await Promise.all([
+        getDocs(collection(firestoreDb, "orders")),
+        getDocs(collection(firestoreDb, "products")),
+      ]);
 
-    const prodCategoryMap = new Map<string, string>();
-    prodsSnap.docs.forEach((d) => {
-      const data = d.data();
-      prodCategoryMap.set(d.id, data.categoryName || "General");
-    });
+      const prodCategoryMap = new Map<string, string>();
+      prodsSnap.docs.forEach((d) => {
+        const data = d.data();
+        prodCategoryMap.set(d.id, data.categoryName || "General");
+      });
 
-    const catRevenueMap = new Map<string, number>();
-    ordersSnap.docs.forEach((doc) => {
-      const order = doc.data() as Order;
-      if (order.orderStatus !== "cancelled" && order.items) {
-        order.items.forEach((item) => {
-          const category = prodCategoryMap.get(item.productId) || "General";
-          const rev = item.subtotal || item.unitPrice * (item.quantity || 1);
-          catRevenueMap.set(category, (catRevenueMap.get(category) || 0) + rev);
-        });
-      }
-    });
+      const catRevenueMap = new Map<string, number>();
+      ordersSnap.docs.forEach((doc) => {
+        const order = doc.data() as Order;
+        if (order.orderStatus !== "cancelled" && order.items) {
+          order.items.forEach((item) => {
+            const category = prodCategoryMap.get(item.productId) || "General";
+            const rev = item.subtotal || item.unitPrice * (item.quantity || 1);
+            catRevenueMap.set(category, (catRevenueMap.get(category) || 0) + rev);
+          });
+        }
+      });
 
-    return Array.from(catRevenueMap.entries()).map(([name, value]) => ({
-      name,
-      value: Number(value.toFixed(2)),
-    }));
+      return Array.from(catRevenueMap.entries()).map(([name, value]) => ({
+        name,
+        value: Number(value.toFixed(2)),
+      }));
+    } catch {
+      return [];
+    }
   },
 };
