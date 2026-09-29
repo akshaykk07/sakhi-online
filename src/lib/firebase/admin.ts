@@ -3,6 +3,8 @@ import { getFirestore, Firestore, FieldValue, Transaction } from "firebase-admin
 import { getAuth, Auth } from "firebase-admin/auth";
 import { getStorage, Storage } from "firebase-admin/storage";
 
+import { firebaseConfig } from "./config";
+
 let adminApp: App | undefined;
 
 export function getFirebaseAdminApp(): App {
@@ -15,7 +17,8 @@ export function getFirebaseAdminApp(): App {
   const projectId =
     process.env.FIREBASE_PROJECT_ID ||
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
-    (usingEmulator ? "demo-eshop-admin" : undefined);
+    firebaseConfig.projectId ||
+    (usingEmulator ? "demo-eshop-admin" : "sakhi-online");
 
   if (usingEmulator) {
     process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "localhost:8080";

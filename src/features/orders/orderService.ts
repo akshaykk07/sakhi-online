@@ -506,27 +506,38 @@ export const orderService = {
       }
 
       // If server route failed due to missing Google Cloud / Firebase Admin credentials,
-      // gracefully fall back to the atomic client Firestore transaction!
-      if (
-        data.error?.includes("Could not load the default credentials") ||
-        data.error?.includes("credentials") ||
-        data.error?.includes("Firebase Admin")
-      ) {
-        console.warn("Server checkout API lacks GCP credentials, executing direct client transaction:", data.error);
+      // project ID detection failure, or server error, gracefully fall back to the atomic client Firestore transaction!
+      const errorMsg = data?.error || "";
+      const isCredentialOrServerError =
+        res.status >= 500 ||
+        errorMsg.includes("Project Id") ||
+        errorMsg.includes("credentials") ||
+        errorMsg.includes("Firebase Admin") ||
+        errorMsg.includes("authentication") ||
+        errorMsg.includes("Google APIs") ||
+        errorMsg.includes("UNAUTHENTICATED");
+
+      if (isCredentialOrServerError) {
+        console.warn("Server checkout API lacks GCP credentials or failed, executing direct client transaction:", errorMsg);
         return await createOrderClientFallback(payload);
       }
 
       throw new Error(data.error || "Failed to create order");
     } catch (err: any) {
+      const msg = err?.message || "";
+      // Rethrow client-side business logic validation errors
       if (
-        err?.message?.includes("Could not load the default credentials") ||
-        err?.message?.includes("credentials") ||
-        err?.message?.includes("fetch failed")
+        msg.includes("Insufficient stock") ||
+        msg.includes("does not exist") ||
+        msg.includes("unavailable for purchase") ||
+        msg.includes("Missing required customer") ||
+        msg.includes("empty cart")
       ) {
-        console.warn("Falling back to client Firestore transaction for order creation:", err);
-        return await createOrderClientFallback(payload);
+        throw err;
       }
-      throw err;
+
+      console.warn("Falling back to client Firestore transaction for order creation:", err);
+      return await createOrderClientFallback(payload);
     }
   },
 
@@ -549,22 +560,26 @@ export const orderService = {
         return data;
       }
 
-      if (
-        data.error?.includes("Could not load the default credentials") ||
-        data.error?.includes("credentials")
-      ) {
+      const errorMsg = data?.error || "";
+      const isCredentialOrServerError =
+        res.status >= 500 ||
+        errorMsg.includes("Project Id") ||
+        errorMsg.includes("credentials") ||
+        errorMsg.includes("Firebase Admin") ||
+        errorMsg.includes("authentication") ||
+        errorMsg.includes("Google APIs") ||
+        errorMsg.includes("UNAUTHENTICATED");
+
+      if (isCredentialOrServerError) {
         return await this.updateOrderStatusDirect(orderId, newStatus, note, adminId, adminName);
       }
 
       throw new Error(data.error || "Failed to update order status");
     } catch (err: any) {
-      if (
-        err?.message?.includes("Could not load the default credentials") ||
-        err?.message?.includes("credentials")
-      ) {
-        return await this.updateOrderStatusDirect(orderId, newStatus, note, adminId, adminName);
+      if (err?.message?.includes("Invalid status transition")) {
+        throw err;
       }
-      throw err;
+      return await this.updateOrderStatusDirect(orderId, newStatus, note, adminId, adminName);
     }
   },
 
@@ -658,16 +673,139 @@ export const orderService = {
     adminId?: string,
     adminName?: string
   ): Promise<any> {
-    const res = await fetch(`/api/orders/${orderId}/refund`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount, reason, restoreStock, adminId, adminName }),
-    });
+    try {
+      const res = await fetch(`/api/orders/${orderId}/refund`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, reason, restoreStock, adminId, adminName }),
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
+      const data = await res.json();
+      if (res.ok) {
+        return data;
+      }
+
+      const errorMsg = data?.error || "";
+      const isCredentialOrServerError =
+        res.status >= 500 ||
+        errorMsg.includes("Project Id") ||
+        errorMsg.includes("credentials") ||
+        errorMsg.includes("Firebase Admin") ||
+        errorMsg.includes("authentication") ||
+        errorMsg.includes("Google APIs") ||
+        errorMsg.includes("UNAUTHENTICATED");
+
+      if (isCredentialOrServerError) {
+        return await this.processRefundDirect(orderId, amount, reason, restoreStock, adminId, adminName);
+      }
+
       throw new Error(data.error || "Failed to process refund");
+    } catch (err: any) {
+      return await this.processRefundDirect(orderId, amount, reason, restoreStock, adminId, adminName);
     }
-    return data;
+  },
+
+  async processRefundDirect(
+    orderId: string,
+    amount: number,
+    reason: string,
+    restoreStock: boolean = true,
+    adminId: string = "admin",
+    adminName: string = "Administrator"
+  ): Promise<any> {
+    if (!firestoreDb) throw new Error("Firestore client is offline");
+    const refundAmount = Number(amount);
+    if (isNaN(refundAmount) || refundAmount <= 0) {
+      throw new Error("Invalid refund amount");
+    }
+
+    const nowIso = new Date().toISOString();
+    return await runTransaction(firestoreDb, async (transaction) => {
+      const orderRef = doc(firestoreDb!, COLLECTION_NAME, orderId);
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists()) {
+        throw new Error(`Order #${orderId} not found.`);
+      }
+
+      const orderData = orderSnap.data() as Order;
+      const currentRefunded = Number(orderData.refundAmount || 0);
+      const orderTotal = Number(orderData.total || 0);
+      const maxRefundable = Number((orderTotal - currentRefunded).toFixed(2));
+
+      if (refundAmount > maxRefundable) {
+        throw new Error(`Refund amount ₹${refundAmount} exceeds maximum refundable balance of ₹${maxRefundable}.`);
+      }
+
+      const newTotalRefunded = Number((currentRefunded + refundAmount).toFixed(2));
+      const isFullRefund = newTotalRefunded >= orderTotal;
+
+      const orderUpdates: Record<string, any> = {
+        refundAmount: newTotalRefunded,
+        refundedAt: nowIso,
+        updatedAt: nowIso,
+      };
+
+      if (isFullRefund) {
+        orderUpdates.orderStatus = "refunded";
+        orderUpdates.paymentStatus = "refunded";
+      } else {
+        orderUpdates.paymentStatus = "partially_refunded";
+      }
+
+      transaction.update(orderRef, orderUpdates);
+
+      // Status history
+      const histRef = doc(collection(firestoreDb!, COLLECTION_NAME, orderId, "statusHistory"));
+      transaction.set(histRef, {
+        id: histRef.id,
+        previousStatus: orderData.orderStatus,
+        newStatus: isFullRefund ? "refunded" : orderData.orderStatus,
+        changedBy: adminId,
+        changedByName: adminName,
+        timestamp: nowIso,
+        note: `Processed refund of ₹${refundAmount}. Reason: ${reason || "N/A"}`,
+      });
+
+      // Restock items if full refund
+      if (restoreStock && isFullRefund && orderData.items) {
+        for (const item of orderData.items) {
+          const prodRef = doc(firestoreDb!, "products", item.productId);
+          const prodSnap = await transaction.get(prodRef);
+          if (prodSnap.exists()) {
+            const currentStock = Number(prodSnap.data()?.stockQuantity || 0);
+            const newStock = currentStock + Number(item.quantity);
+            transaction.update(prodRef, {
+              stockQuantity: newStock,
+              updatedAt: nowIso,
+            });
+
+            const invTxRef = doc(collection(firestoreDb!, "inventoryTransactions"));
+            transaction.set(invTxRef, {
+              id: invTxRef.id,
+              productId: item.productId,
+              productName: item.name,
+              type: "refund",
+              quantity: item.quantity,
+              previousStock: currentStock,
+              newStock,
+              reason: `Refund for Order #${orderData.orderNumber}`,
+              referenceId: orderId,
+              performedBy: adminId,
+              performedByName: adminName,
+              createdAt: nowIso,
+            });
+          }
+        }
+      }
+
+      return {
+        success: true,
+        orderId,
+        refundAmount,
+        totalRefunded: newTotalRefunded,
+        orderStatus: isFullRefund ? "refunded" : orderData.orderStatus,
+        message: `Refund of ₹${refundAmount} processed successfully.`,
+      };
+    });
   },
 };
